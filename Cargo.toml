@@ -1,10 +1,10 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 
 members = [
     "numbat",
     "numbat-exchange-rates",
-    "numbat-cli",
+    "numbat-cli", "numbat-jupyter",
 ]
 
 exclude = [
