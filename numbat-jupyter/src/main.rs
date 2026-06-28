@@ -1,13 +1,16 @@
 use anyhow::Result;
 use clap::Parser;
+use colored::Colorize;
 use juker::{
     ConnectionInfo, JuHelpLink, JuKernel, JuKernelInfo,
     message::{EvalResult, EvalValue},
     server::JuServer,
 };
 use numbat::{
-    Context, InterpreterSettings,
+    Context, FormatOptions, InterpreterSettings,
+    compact_str::{CompactString, ToCompactString as _},
     diagnostic::ErrorDiagnostic,
+    markup::{FormatType, FormattedString, Formatter, Markup},
     module_importer::{BuiltinModuleImporter, ChainedImporter, FileSystemImporter},
     resolver::CodeSource,
 };
@@ -194,8 +197,13 @@ impl JuKernel for Eva {
             .ctx
             .interpret_with_settings(&mut self.settings, &code, CodeSource::Text)
         {
-            Ok((_statements, res)) => {
-                let txt = res.value_as_string().unwrap_or("".into());
+            Ok((statements, res)) => {
+                let registry = self.ctx.dimension_registry();
+                let format_options = FormatOptions::default();
+                let result_markup =
+                    res.to_markup(statements.last(), registry, true, false, &format_options);
+                // let txt = res.value_as_string().unwrap_or("".into());
+                let txt = ansi_format(&result_markup, false);
                 EvalResult::Success {
                     results: vec![EvalValue {
                         data: json!({
@@ -214,9 +222,7 @@ impl JuKernel for Eva {
                     NameResolutionError(name_resolution_error) => {
                         ("NameResolutionError", tb(&name_resolution_error))
                     }
-                    TypeCheckError(type_check_error) => {
-                        ("TypeCheckError", tb(&type_check_error))
-                    },
+                    TypeCheckError(type_check_error) => ("TypeCheckError", tb(&type_check_error)),
                     RuntimeError(runtime_error) => (
                         "RuntimeError",
                         runtime_error
@@ -239,6 +245,35 @@ impl JuKernel for Eva {
             }
         }
     }
+}
+
+pub struct ANSIFormatter;
+
+impl Formatter for ANSIFormatter {
+    fn format_part(
+        &self,
+        FormattedString(_output_type, format_type, text): &FormattedString,
+    ) -> CompactString {
+        (match format_type {
+            FormatType::Whitespace => text.normal(),
+            FormatType::Emphasized => text.bold(),
+            FormatType::Dimmed => text.dimmed(),
+            FormatType::Text => text.normal(),
+            FormatType::String => text.green(),
+            FormatType::Keyword => text.magenta(),
+            FormatType::Value => text.yellow(),
+            FormatType::Unit => text.cyan(),
+            FormatType::Identifier => text.normal(),
+            FormatType::TypeIdentifier => text.blue().italic(),
+            FormatType::Operator => text.bold(),
+            FormatType::Decorator => text.green(),
+        })
+        .to_compact_string()
+    }
+}
+
+pub fn ansi_format(m: &Markup, indent: bool) -> CompactString {
+    ANSIFormatter {}.format(m, indent)
 }
 
 // use anyhow::Result;
